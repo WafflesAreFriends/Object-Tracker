@@ -2,9 +2,13 @@ import cv2
 import imutils
 import numpy as np
 from math import atan2, cos, sin, sqrt, pi
+from scipy import ndimage as nd
 
 class DetectedObject():
     def __init__(self, img, mask, keypoints):
+        self.h, self.w, _ = img.shape
+        self.xy_grid = np.meshgrid(np.arange(self.w), np.arange(self.h))
+
         self.updateObject(img, mask, keypoints, True)
     
     def updateObject(self, img, mask, keypoints, tracking=True):
@@ -62,9 +66,30 @@ class DetectedObject():
             cv2.circle(img, cntr, 3, (255, 0, 255), 2)
             p1 = (cntr[0] + 0.02 * eigenvectors[0,0] * eigenvalues[0,0], cntr[1] + 0.02 * eigenvectors[0,1] * eigenvalues[0,0])
             p2 = (cntr[0] - 0.02 * eigenvectors[1,0] * eigenvalues[1,0], cntr[1] - 0.02 * eigenvectors[1,1] * eigenvalues[1,0])
-            drawAxis(img, cntr, p1, (0, 255, 0), 1)
-            drawAxis(img, cntr, p2, (0, 0, 255), 1)
+            
+            drawAxis(img, cntr, p1, (0, 255, 0), 1) # green
+            drawAxis(img, cntr, p2, (0, 0, 255), 1) # red...right, it's BGR
+            
+#            # p1 and p2 are not unit vectors. 
+#            
+#            p1a = np.asarray(p1); p2a = np.asarray(p2)
+#            print(np.sqrt(np.sum(p1a*p1a)), np.sqrt(np.sum(p2a*p2a)))
+#            
+            
             angle = atan2(eigenvectors[0,1], eigenvectors[0,0]) # orientation in radians
+            
+            pax = self.principal_axes()
+            pshow = (pax*500).astype(np.int32)
+            origin = np.asarray(cntr)
+            cv2.line(img, cntr, tuple(pshow[:,0] + origin),\
+                     (255,0,255),20, cv2.LINE_AA)
+            cv2.line(img, cntr, tuple(pshow[:,1] + origin),\
+                     (0,255,255),20, cv2.LINE_AA)
+            cv2.line(img, cntr, tuple(-pshow[:,0] + origin),\
+                     (255,0,255),20, cv2.LINE_AA)
+            cv2.line(img, cntr, tuple(-pshow[:,1] + origin),\
+                     (0,255,255),20, cv2.LINE_AA)
+            
             return angle
         
         ## Apply some image preprocessing and grab contours
@@ -80,6 +105,30 @@ class DetectedObject():
         
         return getOrientationFromPCA(c, self.img)
         
+    
+    def principal_axes(self):
+        # Since we are in 2D, the principal axes are the max and min variance 
+        #   directions. I can use the mask boundary to find these, since the 
+        #   "mass distribution" of a mask is uniform. But I do need to remove
+        #   the average value from the mask coordinates; SVD does not do that. 
+        #
+        # The columns of the returned 2x2 array are unit vectors in the two principal
+        #   directions, expressed in the camera coordinate system. 
+        #
+        h, w, _ = self.mask.shape
+#        print(h,w)
+        # we should agree on what a mask is. 
+        billmask = (self.mask[:,:,0]).reshape((h,w,1)) 
+        billmask[billmask > 0] = 1.0
+        
+        bpts = get_mask_boundary(billmask, self.xy_grid).astype(np.float32)
+#        print('bpts shape is',bpts.shape)
+        bpts = bpts - np.mean(bpts,axis=0,keepdims=True) 
+        p_axes, _,  _ = np.linalg.svd(bpts.transpose())
+        
+        return p_axes  # columns are the principal axes
+    
+        
 class Micropipette(DetectedObject):
     def getTipPixel(self):
         print("Find")
@@ -91,7 +140,7 @@ def drawPixelLocation(img, pixel, color=(255,0,0), radius=20, thickness=-1):
 def displayImage(img):
     while True:
         cv2.imshow("Display", cv2.resize(img, (1280, 720)))
-        k = cv2.waitKey(1)
+        k = cv2.waitKey(1)  # This pegs my CPU. 
         if k == 27:
             break
         
@@ -107,9 +156,24 @@ def identifyObjectInImage(img_path, mask_path):
     angle = micropipette.getOrientation()
     print("Angle in radians: ", angle)
     print("Angle in degrees: ", angle*(360/(2/pi)))
-    
+        
     displayImage(img)
     
+def get_mask_boundary(mask, xy_grid): # returns Nx2
+    bmask = nd.binary_dilation(mask) - mask
+    pts = mask_to_points(bmask, xy_grid)
+    return pts
+
+def mask_to_points(mask, xy_grid):  # returns Nx2
+    xx, yy = xy_grid
+    mgtz = np.squeeze(mask > 0, axis=2)   
+    xmask = xx[mgtz].reshape((1,-1))
+    ymask = yy[mgtz].reshape((1,-1))
+    pts = np.concatenate((xmask, ymask),axis=0)
+    return pts.transpose()
+
+
+ 
 if __name__=="__main__":
     identifyObjectInImage("Image.jpg", "Image_Mask.png")
     
