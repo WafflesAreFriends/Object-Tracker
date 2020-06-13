@@ -4,6 +4,8 @@ import numpy as np
 from math import atan2, cos, sin, sqrt, pi
 from scipy import ndimage as nd
 
+##### Classes #####
+
 class DetectedObject():
     def __init__(self, img, mask, keypoints):
         self.h, self.w, _ = img.shape
@@ -19,113 +21,82 @@ class DetectedObject():
     
     # Draws outline of largest white area of mask
     def drawOutline(self, color=(0,255,0), thickness=10):
-        gray = cv2.cvtColor(self.mask, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (5, 5), 0)
-        
-        thresh = cv2.threshold(gray, 45, 255, cv2.THRESH_BINARY)[1]
-        thresh = cv2.erode(thresh, None, iterations=2)
-        thresh = cv2.dilate(thresh, None, iterations=2)
-        
-        cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cnts = imutils.grab_contours(cnts)
-        c = max(cnts, key=cv2.contourArea)
-        
+        c = self.getContours()
         cv2.drawContours(self.img, [c], -1, color, thickness)
 
-    def getOrientation(self):
-        def drawAxis(img, p_, q_, colour, scale):
-            p = list(p_)
-            q = list(q_)
-        
-            angle = atan2(p[1] - q[1], p[0] - q[0]) # angle in radians
-            hypotenuse = sqrt((p[1] - q[1]) * (p[1] - q[1]) + (p[0] - q[0]) * (p[0] - q[0]))
-            # Here we lengthen the arrow by a factor of scale
-            q[0] = p[0] - scale * hypotenuse * cos(angle)
-            q[1] = p[1] - scale * hypotenuse * sin(angle)
-            cv2.line(img, (int(p[0]), int(p[1])), (int(q[0]), int(q[1])), colour, 10, cv2.LINE_AA)
-            # create the arrow hooks
-            p[0] = q[0] + 9 * cos(angle + pi / 4)
-            p[1] = q[1] + 9 * sin(angle + pi / 4)
-            cv2.line(img, (int(p[0]), int(p[1])), (int(q[0]), int(q[1])), colour, 10, cv2.LINE_AA)
-            p[0] = q[0] + 9 * cos(angle - pi / 4)
-            p[1] = q[1] + 9 * sin(angle - pi / 4)
-            cv2.line(img, (int(p[0]), int(p[1])), (int(q[0]), int(q[1])), colour, 10, cv2.LINE_AA)
-    
-        def getOrientationFromPCA(pts, img):
-            sz = len(pts)
-            data_pts = np.empty((sz, 2), dtype=np.float64)
-            for i in range(data_pts.shape[0]):
-                data_pts[i,0] = pts[i,0,0]
-                data_pts[i,1] = pts[i,0,1]
-            # Perform PCA analysis
-            mean = np.empty((0))
-            mean, eigenvectors, eigenvalues = cv2.PCACompute2(data_pts, mean)
-            # Store the center of the object
-            cntr = (int(mean[0,0]), int(mean[0,1]))
-            
-            cv2.circle(img, cntr, 3, (255, 0, 255), 2)
-            p1 = (cntr[0] + 0.02 * eigenvectors[0,0] * eigenvalues[0,0], cntr[1] + 0.02 * eigenvectors[0,1] * eigenvalues[0,0])
-            p2 = (cntr[0] - 0.02 * eigenvectors[1,0] * eigenvalues[1,0], cntr[1] - 0.02 * eigenvectors[1,1] * eigenvalues[1,0])
-            
-            drawAxis(img, cntr, p1, (0, 255, 0), 1) # green
-            drawAxis(img, cntr, p2, (0, 0, 255), 1) # red...right, it's BGR
-            
-#            # p1 and p2 are not unit vectors. 
-#            
-#            p1a = np.asarray(p1); p2a = np.asarray(p2)
-#            print(np.sqrt(np.sum(p1a*p1a)), np.sqrt(np.sum(p2a*p2a)))
-#            
-            
-            angle = atan2(eigenvectors[0,1], eigenvectors[0,0]) # orientation in radians
-            
-            pax = self.principal_axes()
-            pshow = (pax*500).astype(np.int32)
-            origin = np.asarray(cntr)
-            cv2.line(img, cntr, tuple(pshow[:,0] + origin),\
-                     (255,0,255),20, cv2.LINE_AA)
-            cv2.line(img, cntr, tuple(pshow[:,1] + origin),\
-                     (0,255,255),20, cv2.LINE_AA)
-            cv2.line(img, cntr, tuple(-pshow[:,0] + origin),\
-                     (255,0,255),20, cv2.LINE_AA)
-            cv2.line(img, cntr, tuple(-pshow[:,1] + origin),\
-                     (0,255,255),20, cv2.LINE_AA)
-            
-            return angle
-        
-        ## Apply some image preprocessing and grab contours
+    # Temporary
+    def getContours(self):
         gray = cv2.cvtColor(self.mask, cv2.COLOR_BGR2GRAY)
         thresh = cv2.threshold(gray, 45, 255, cv2.THRESH_BINARY)[1]
         cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cnts = imutils.grab_contours(cnts)
-        c = max(cnts, key=cv2.contourArea)
+        return max(cnts, key=cv2.contourArea)
+
+    def getPCAResults(self):
+        pts = self.getContours()
+        sz = len(pts)
+        data_pts = np.empty((sz, 2), dtype=np.float64)
+        for i in range(data_pts.shape[0]):
+            data_pts[i,0] = pts[i,0,0]
+            data_pts[i,1] = pts[i,0,1]
+            
+        # Perform PCA analysis
+        mean = np.empty((0))
+        return cv2.PCACompute2(data_pts, mean) # mean, eigenvectors, eigenvalues
+        #cntr = (int(mean[0,0]), int(mean[0,1])) # Store center of axes in tuple
+
+    def getOrientation(self):
+        mean, eigenvectors, eigenvalues = self.getPCAResults()
+        cntr = (int(mean[0,0]), int(mean[0,1])) # Store center of axes in tuple
+
+        p1 = (cntr[0] + 0.02 * eigenvectors[0,0] * eigenvalues[0,0], cntr[1] + 0.02 * eigenvectors[0,1] * eigenvalues[0,0])
+        p2 = (cntr[0] - 0.02 * eigenvectors[1,0] * eigenvalues[1,0], cntr[1] - 0.02 * eigenvectors[1,1] * eigenvalues[1,0])
         
-        # area = cv2.contourArea(c)
-        # if area < 1e2 or 1e5 < area:
-        #    continue
         
-        return getOrientationFromPCA(c, self.img)
+        cv2.line(self.img, (int(cntr[0]), int(cntr[1])), (int(p1[0]), int(p1[1])), (255, 0, 0), 5, cv2.LINE_AA)
+        cv2.line(self.img, (int(cntr[0]), int(cntr[1])), (int(p2[0]), int(p2[1])), (0, 0, 255), 5, cv2.LINE_AA)
+
+        angle = atan2(eigenvectors[0,1], eigenvectors[0,0]) # orientation in radians
+        
+        pax = self.principal_axes()
+        
+        # Bill's Code
+        pshow = (pax*500).astype(np.int32)
+        origin = np.asarray(cntr) #Np array
+
+        cv2.line(self.img, tuple(origin+[50, 50]), tuple(pshow[:,0] + origin),\
+                             (255,0,255),20, cv2.LINE_AA)
+        cv2.line(self.img, tuple(origin), tuple(pshow[:,1] + origin),\
+                             (0,255,255),20, cv2.LINE_AA)
+#
+        # Draw Center
+        cv2.circle(self.img, cntr, 20, (0, 0, 0), 2)
+
+        return angle
         
     
     def principal_axes(self):
-        # Since we are in 2D, the principal axes are the max and min variance 
-        #   directions. I can use the mask boundary to find these, since the 
+        # Since we are in 2D, the principal axes are the max and min variance
+        #   directions. I can use the mask boundary to find these, since the
         #   "mass distribution" of a mask is uniform. But I do need to remove
-        #   the average value from the mask coordinates; SVD does not do that. 
+        #   the average value from the mask coordinates; SVD does not do that.
         #
         # The columns of the returned 2x2 array are unit vectors in the two principal
-        #   directions, expressed in the camera coordinate system. 
+        #   directions, expressed in the camera coordinate system.
         #
         h, w, _ = self.mask.shape
-#        print(h,w)
-        # we should agree on what a mask is. 
-        billmask = (self.mask[:,:,0]).reshape((h,w,1)) 
+
+        # we should agree on what a mask is.
+        billmask = self.mask
+        billmask = (self.mask[:,:,0].reshape(h, w, 1))
+        billmask = (self.mask[:,:,0]).reshape((h,w,1))
         billmask[billmask > 0] = 1.0
-        
+
         bpts = get_mask_boundary(billmask, self.xy_grid).astype(np.float32)
 #        print('bpts shape is',bpts.shape)
-        bpts = bpts - np.mean(bpts,axis=0,keepdims=True) 
+        bpts = bpts - np.mean(bpts,axis=0,keepdims=True)
         p_axes, _,  _ = np.linalg.svd(bpts.transpose())
-        
+
         return p_axes  # columns are the principal axes
     
         
@@ -133,7 +104,8 @@ class Micropipette(DetectedObject):
     def getTipPixel(self):
         print("Find")
 
-# Functions
+##### General Functions #####
+
 def drawPixelLocation(img, pixel, color=(255,0,0), radius=20, thickness=-1):
     cv2.circle(img, pixel, radius, color, thickness)
     
@@ -144,6 +116,21 @@ def displayImage(img):
         if k == 27:
             break
         
+def get_mask_boundary(mask, xy_grid): # returns Nx2
+    bmask = nd.binary_dilation(mask) - mask
+    pts = mask_to_points(bmask, xy_grid)
+    return pts
+
+def mask_to_points(mask, xy_grid):  # returns Nx2
+    xx, yy = xy_grid
+    mgtz = np.squeeze(mask > 0, axis=2)
+    xmask = xx[mgtz].reshape((1,-1))
+    ymask = yy[mgtz].reshape((1,-1))
+    pts = np.concatenate((xmask, ymask),axis=0)
+    return pts.transpose()
+
+
+##### Core #####
 
 def identifyObjectInImage(img_path, mask_path):
     # Read original image and black and white mask
@@ -154,28 +141,13 @@ def identifyObjectInImage(img_path, mask_path):
     micropipette = Micropipette(img, mask, [])
     micropipette.drawOutline()
     angle = micropipette.getOrientation()
-    print("Angle in radians: ", angle)
-    print("Angle in degrees: ", angle*(360/(2/pi)))
+    #print("Angle in radians: ", angle)
+    #print("Angle in degrees: ", angle*(360/(2/pi)))
         
     displayImage(img)
-    
-def get_mask_boundary(mask, xy_grid): # returns Nx2
-    bmask = nd.binary_dilation(mask) - mask
-    pts = mask_to_points(bmask, xy_grid)
-    return pts
-
-def mask_to_points(mask, xy_grid):  # returns Nx2
-    xx, yy = xy_grid
-    mgtz = np.squeeze(mask > 0, axis=2)   
-    xmask = xx[mgtz].reshape((1,-1))
-    ymask = yy[mgtz].reshape((1,-1))
-    pts = np.concatenate((xmask, ymask),axis=0)
-    return pts.transpose()
-
-
  
 if __name__=="__main__":
-    identifyObjectInImage("Image.jpg", "Image_Mask.png")
+    identifyObjectInImage("Micropipette/Image.jpg", "Micropipette/Image_Mask.png")
     
 #
 #    """
