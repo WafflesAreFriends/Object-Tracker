@@ -122,8 +122,21 @@ class Micropipette(DetectedObject):
 #
 #        return tip_on
 
-class PCR_Plate():
-    pass
+class PCR_Plate(DetectedObject):
+    def __init__(self, img, mask):
+        super().__init__(img, mask) 
+
+    def identify_corners(self):
+        #[(x1,y1), (x2,y2), (x3,y3), (x4,y4)]
+        #length, width = super().get_dimensions(self)
+        pass
+
+
+    def identifyOrientation(self):
+        pass
+
+    def placeTemplate(self):
+        pass
 
 ##### General Functions #####
 
@@ -131,13 +144,16 @@ def draw_pixel_location(img, pixel, color=(255,0,0), radius=20, thickness=-1):
     cv2.circle(img, pixel, radius, color, thickness)
     
 def display_image(img, scale=1):
-    h, w, _ = img.shape
+    #h, w, _ = img.shape
     while True:
-        scaled_width = w*scale
-        scaled_height = h*scale
-        cv2.imshow("Display", cv2.resize(img, (scaled_width, scaled_height)))
+        #scaled_width = w*scale
+        #scaled_height = h*scale
+        #cv2.imshow("Display", cv2.resize(img, (scaled_width, scaled_height)))
+        
+        #hard coded to fit screen
+        cv2.imshow("Display", cv2.resize(img, (960, 540)))
         k = cv2.waitKey(1)  # This pegs my CPU. 
-        if k == 27:
+        if k == 27: #esc
             break
     cv2.destroyAllWindows()
 
@@ -152,16 +168,23 @@ def get_mask_from_image(mask):
     mask[mask > 0.5] = 1.0
     return mask
 
-def identify_object(img_path, mask_path):
+def identify_object(img_path, mask_path, objectName):
     img = cv2.imread(img_path)
     mask = get_mask_from_image(cv2.imread(mask_path))
+        
     
     # Create Micropipette Object
-    micropipette = Micropipette(img, mask)
-    micropipette.draw_axes()
-    micropipette.draw_boundary()
-    
-    display_image(img)
+    if objectName == 'Micropipette':
+        micropipette = Micropipette(img, mask)
+        micropipette.draw_axes()
+        micropipette.draw_boundary()
+    if objectName == 'PCR Plate':
+        pcrPlate = PCR_Plate(img, mask)
+        pcrPlate.identify_corners()
+    return mask
     
 if __name__=="__main__":
-    identify_object("Micropipette/Image.jpg", "Micropipette/Image_Mask.png")
+    #identify_object("Micropipette/Image.jpg", "Micropipette/Image_Mask.png", 'Micropipette')
+    mask = identify_object("PCR_Plate/Image.jpg", "PCR_Plate/Image_Mask.png", 'PCR Plate')
+    cv2.imshow("test", mask*255)
+    
