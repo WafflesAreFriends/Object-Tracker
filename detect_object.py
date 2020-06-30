@@ -5,9 +5,32 @@ from math import atan2, cos, sin, sqrt, pi
 from scipy import ndimage as nd
 
 def get_mask_boundary(mask, xy_grid): # returns Nx2
-    bmask = nd.binary_dilation(mask) - mask
-    pts = mask_to_points(bmask, xy_grid)
-    return pts
+#    bmask = nd.binary_dilation(mask) - mask
+#    pts = mask_to_points(bmask, xy_grid)
+#    return pts
+
+#Bill's from points_util.py as of 6/30/20
+    c = None
+#    mask[nd.binary_dilation(mask)]=1
+    contours, hierarchy = \
+        cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    
+    if len(contours)==0:
+        print('no contours?')
+        return c
+#
+# Use longest contour, if more than one is found.
+#
+    lmax=0
+    ipick = 0
+    for i,c in enumerate(contours):
+        n = c.shape[0]
+        if n > lmax:
+            lmax=n
+            ipick=i
+
+    c = contours[ipick]      
+    return c.squeeze()
 
 def mask_to_points(mask, xy_grid):  # returns Nx2
     xx, yy = xy_grid
@@ -181,10 +204,10 @@ def identify_object(img_path, mask_path, objectName):
     if objectName == 'PCR Plate':
         pcrPlate = PCR_Plate(img, mask)
         pcrPlate.identify_corners()
+        display_image(img)
     return mask
     
 if __name__=="__main__":
     #identify_object("Micropipette/Image.jpg", "Micropipette/Image_Mask.png", 'Micropipette')
     mask = identify_object("PCR_Plate/Image.jpg", "PCR_Plate/Image_Mask.png", 'PCR Plate')
-    cv2.imshow("test", mask*255)
     
