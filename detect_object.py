@@ -125,6 +125,9 @@ class Micropipette(DetectedObject):
 class PCR_Plate():
     pass
 
+class Sticker(DetectedObject):
+    pass
+
 ##### General Functions #####
 
 def draw_pixel_location(img, pixel, color=(255,0,0), radius=20, thickness=-1):
@@ -162,6 +165,49 @@ def identify_object(img_path, mask_path):
     micropipette.draw_boundary()
     
     display_image(img)
+
+# Checks if the intersection of an object mask and sticker mask is roughly equal 
+# to the sticker mask itself
+def check_mask_overlap(obj_mask, sticker_mask):
+    mask_intersect = np.bitwise_and(obj_mask, sticker_mask)
+
+    unequal_pixels = 0
+
+    # for i in range(len(mask_intersect)):
+    #     for j in range(len(mask_intersect[i])):
+    #             if mask_intersect[i][j] != sticker_mask[i][j]:
+    #                 unequal_pixels += 1
+    # if unequal_pixels < 100:
+    #     return True 
     
+    if np.array_equal(mask_intersect, sticker_mask):
+        return True 
+
+    return False
+
+# Checks if a sticker is on an object
+def confirm_sticker_on_obj(img_path, obj_mask_path, sticker_mask_path):
+    # Get masks and images
+    img = cv2.imread(img_path)
+    obj_mask = get_mask_from_image(cv2.imread(obj_mask_path))
+    sticker_mask = get_mask_from_image(cv2.imread(sticker_mask_path))
+
+
+    # Create objects
+    micropipette = Micropipette(img, obj_mask)
+    micropipette.draw_boundary()
+    sticker = Sticker(img, sticker_mask)
+    sticker.draw_boundary()
+
+    if check_mask_overlap(obj_mask, sticker_mask):
+        print("Sticker is on the object :)")
+    else:
+        print ("Sticker is not on the object :(")
+
+    display_image(img)
+
+# MAIN 
 if __name__=="__main__":
-    identify_object("Micropipette/Image.jpg", "Micropipette/Image_Mask.png")
+    confirm_sticker_on_obj("Sticker/Image.jpg", "Sticker/Pipette_Mask.png", "Sticker/Sticker_Mask.png")
+    #identify_object("Sticker/Image.jpg", "Sticker/Pipette_Mask.png")
+    #identify_object("Micropipette/Image.jpg", "Micropipette/Image_Mask.png")
