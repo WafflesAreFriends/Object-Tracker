@@ -5,15 +5,15 @@ from math import atan2, cos, sin, sqrt, pi
 from scipy import ndimage as nd
 
 def get_mask_boundary(mask, xy_grid): # returns Nx2
-#    bmask = nd.binary_dilation(mask) - mask
+    bmask = nd.binary_dilation(mask) - mask
 #    pts = mask_to_points(bmask, xy_grid)
 #    return pts
 
 #Bill's from points_util.py as of 6/30/20
     c = None
 #    mask[nd.binary_dilation(mask)]=1
-    contours, hierarchy = \
-        cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    testImg, contours, hierarchy = \
+        cv2.findContours(bmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     
     if len(contours)==0:
         print('no contours?')
