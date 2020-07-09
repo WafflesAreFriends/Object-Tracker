@@ -29,7 +29,7 @@ def get_mask_boundary(mask, xy_grid): # returns Nx2
             lmax=n
             ipick=i
 
-    c = contours[ipick]      
+    c = contours[ipick]  
     return c.squeeze()
 
 def mask_to_points(mask, xy_grid):  # returns Nx2
@@ -149,12 +149,43 @@ class PCR_Plate(DetectedObject):
     def __init__(self, img, mask):
         super().__init__(img, mask) 
 
+    #have corners identified but currently clusters, taking average and picking one point will probably work just fine
+    #written in C++ style rather than Python. Should probably change eventually
     def identify_corners(self):
-        #[(x1,y1), (x2,y2), (x3,y3), (x4,y4)]
-        #length, width = super().get_dimensions(self)
-        pass
+        boundaryArr = get_mask_boundary(self.mask, self.xy_grid)
+        
+        minX, minY = np.amin(boundaryArr, axis=0)
+        maxX, maxY = np.amax(boundaryArr, axis=0)
+        
+        #for now, assuming minX and minY don't need while loops, easy to put in if they do though
+        #minX 
+        minXIndex = np.where(boundaryArr == minX)
+        listMinX = minXIndex[0]
+        for index in listMinX:
+            draw_pixel_location(self.img, (boundaryArr[index][0], boundaryArr[index][1]))
+        #minY 
+        minYIndex = np.where(boundaryArr == minY)
+        listMinY = minYIndex[0]
+        index = 0
+        while index < len(listMinY):
+            if(minYIndex[1][index] == 1):
+                draw_pixel_location(self.img, (boundaryArr[listMinY[index]][0], boundaryArr[listMinY[index]][1]))
+            index = index+1
+        #maxX 
+        maxXIndex = np.where(boundaryArr == maxX)
+        listMaxX = maxXIndex[0]
+        for index in listMaxX:
+            draw_pixel_location(self.img, (boundaryArr[index][0], boundaryArr[index][1]))
+        #maxY 
+        maxYIndex = np.where(boundaryArr == maxY)
+        listMaxY = maxYIndex[0]
+        index = 0
+        while index < len(listMaxY):
+            if(maxYIndex[1][index] == 1):
+                draw_pixel_location(self.img, (boundaryArr[listMaxY[index]][0], boundaryArr[listMaxY[index]][1]))
+            index = index+1
 
-
+                
     def identifyOrientation(self):
         pass
 
@@ -210,4 +241,5 @@ def identify_object(img_path, mask_path, objectName):
 if __name__=="__main__":
     #identify_object("Micropipette/Image.jpg", "Micropipette/Image_Mask.png", 'Micropipette')
     mask = identify_object("PCR_Plate/Image.jpg", "PCR_Plate/Image_Mask.png", 'PCR Plate')
+    
     
