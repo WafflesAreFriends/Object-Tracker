@@ -1,13 +1,41 @@
 import cv2
 import imutils
 import numpy as np
-from math import atan2, cos, sin, sqrt, pi
+from math import atan2, cos, sin, sqrt, pi, hypot
 from scipy import ndimage as nd
 
+# def get_mask_boundary(mask, xy_grid): # returns Nx2
+#     bmask = nd.binary_dilation(mask) - mask
+#     pts = mask_to_points(bmask, xy_grid)
+#     return pts
+
 def get_mask_boundary(mask, xy_grid): # returns Nx2
-    bmask = nd.binary_dilation(mask) - mask
-    pts = mask_to_points(bmask, xy_grid)
-    return pts
+#    bmask = nd.binary_dilation(mask) - mask
+#    pts = mask_to_points(bmask, xy_grid)
+#    return pts
+
+#Bill's from points_util.py as of 6/30/20
+    c = None
+#    mask[nd.binary_dilation(mask)]=1
+    contours, hierarchy = \
+        cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    
+    if len(contours)==0:
+        print('no contours?')
+        return c
+#
+# Use longest contour, if more than one is found.
+#
+    lmax=0
+    ipick = 0
+    for i,c in enumerate(contours):
+        n = c.shape[0]
+        if n > lmax:
+            lmax=n
+            ipick=i
+
+    c = contours[ipick]      
+    return c.squeeze()
 
 def mask_to_points(mask, xy_grid):  # returns Nx2
     xx, yy = xy_grid
@@ -126,6 +154,20 @@ class PCR_Plate():
     pass
 
 class Sticker(DetectedObject):
+    def __init__(self, img, mask):
+        super().__init__(img, mask) 
+
+    # Checks if sticker overlaps inputted mask
+    def check_mask_overlap(self, obj_mask):
+        mask_intersect = np.bitwise_and(self.mask, obj_mask)
+        
+        if np.array_equal(mask_intersect, self.mask):
+            return True 
+
+        return False
+    
+
+class Rack(DetectedObject):
     pass
 
 ##### General Functions #####
@@ -166,25 +208,6 @@ def identify_object(img_path, mask_path):
     
     display_image(img)
 
-# Checks if the intersection of an object mask and sticker mask is roughly equal 
-# to the sticker mask itself
-def check_mask_overlap(obj_mask, sticker_mask):
-    mask_intersect = np.bitwise_and(obj_mask, sticker_mask)
-
-    unequal_pixels = 0
-
-    # for i in range(len(mask_intersect)):
-    #     for j in range(len(mask_intersect[i])):
-    #             if mask_intersect[i][j] != sticker_mask[i][j]:
-    #                 unequal_pixels += 1
-    # if unequal_pixels < 100:
-    #     return True 
-    
-    if np.array_equal(mask_intersect, sticker_mask):
-        return True 
-
-    return False
-
 # Checks if a sticker is on an object
 def confirm_sticker_on_obj(img_path, obj_mask_path, sticker_mask_path):
     # Get masks and images
@@ -192,22 +215,82 @@ def confirm_sticker_on_obj(img_path, obj_mask_path, sticker_mask_path):
     obj_mask = get_mask_from_image(cv2.imread(obj_mask_path))
     sticker_mask = get_mask_from_image(cv2.imread(sticker_mask_path))
 
-
     # Create objects
     micropipette = Micropipette(img, obj_mask)
     micropipette.draw_boundary()
     sticker = Sticker(img, sticker_mask)
     sticker.draw_boundary()
 
-    if check_mask_overlap(obj_mask, sticker_mask):
+    on_mask = False
+    if sticker.check_mask_overlap(obj_mask):
         print("Sticker is on the object :)")
+        on_mask = True
     else:
         print ("Sticker is not on the object :(")
 
+    #display_image(img)
+    return on_mask
+
+# this function is a work in progress so it's a bit of a mess right now, but it will
+# eventually check the number of tubes in a rack
+def confirm_tubes_in_rack(correct_num_tubes, img_path, rack_mask_path, sticker_mask_paths):
+    img = cv2.imread(img_path)
+    rack_mask = get_mask_from_image(cv2.imread(rack_mask_path))
+    rack = Rack(img, rack_mask)
+
+    sticker_mask_0 = get_mask_from_image(cv2.imread(sticker_mask_paths[1]))
+    sticker_0 = Sticker(img, sticker_mask_0)
+
+    sticker_x = sticker_0.centroid[0]
+    sticker_y = sticker_0.centroid[1]
+    # print(sticker_x)
+    # print(sticker_y)
+    # print(sticker_0.centroid)
+
+    length, width = rack.get_dimensions()
+    # print(length)
+    # print(width)
+
+    x_axes_color = (0, 0, 255)
+    y_axes_color = (255, 0, 0)
+    thickness=20
+    x_axes_point = rack.centroid+rack.axes[0] * (length / 2)
+    x_axes_point_2 = rack.centroid-rack.axes[0] * (length / 2)
+    y_axes_point = rack.centroid+rack.axes[1] * (width / 2)
+    y_axes_point_2 = rack.centroid-rack.axes[1] * (width / 2)
+
+    # a = x_axes_point[1] - rack.centroid[1] 
+    # b = rack.centroid[0] - x_axes_point[0]  
+    # c = -1 * (a*(rack.centroid[0]) + b*(rack.centroid[1]))
+    # d = abs((a * sticker_x + b * sticker_y + c)) / (sqrt(a * a + b * b))    
+
+    # calculate distance and point on principal axis
+    x1, y1 = x_axes_point_2
+    x2, y2 = x_axes_point
+    x3, y3 = sticker_0.centroid
+    dx, dy = x2-x1, y2-y1
+    det = dx*dx + dy*dy
+    a = (dy*(y3-y1)+dx*(x3-x1))/det
+    final_point = x1+a*dx, y1+a*dy
+
+    dist = hypot(final_point[0] - sticker_x, final_point[1] - sticker_y)
+    print("The distance is: ", dist)
+
+    # distance
+    cv2.line(img, tuple(final_point), tuple(sticker_0.centroid), (0, 255, 0), thickness, cv2.LINE_AA)
+
+    #principal axes
+    cv2.line(img, tuple(x_axes_point_2), tuple(x_axes_point), x_axes_color, thickness, cv2.LINE_AA)
+    cv2.line(img, tuple(y_axes_point_2), tuple(y_axes_point), y_axes_color, thickness, cv2.LINE_AA)
+    
+    #rack.draw_axes()  
     display_image(img)
 
 # MAIN 
 if __name__=="__main__":
-    confirm_sticker_on_obj("Sticker/Image.jpg", "Sticker/Pipette_Mask.png", "Sticker/Sticker_Mask.png")
     #identify_object("Sticker/Image.jpg", "Sticker/Pipette_Mask.png")
-    #identify_object("Micropipette/Image.jpg", "Micropipette/Image_Mask.png")
+    #identify_object("PCR_Plate/Image.jpg", "PCR_Plate/Image_Mask.png")
+    confirm_sticker_on_obj("Sticker/Image.jpg", "Sticker/Pipette_Mask.png", "Sticker/Sticker_Mask.png")
+    confirm_sticker_on_obj("Sticker/Image.jpg", "Sticker/Pipette_Mask.png", "Sticker/Incorrect_Sticker_Mask.png")
+    #sticker_mask_paths = ["Sticker/Rack/H2O_Mask_1.png", "Sticker/Rack/N1_Mask_1.png", "Sticker/Rack/N2_Mask_1.png", "Sticker/Rack/PC_Mask_1.png", "Sticker/Rack/PN_Mask_1.png", "Sticker/Rack/RP_Mask_1.png", "Sticker/Rack/S_Mask_1.png"]
+    #confirm_tubes_in_rack(5, "Sticker/Rack/Rack_Image_1.jpg", "Sticker/Rack/Rack_Mask_1.png", sticker_mask_paths)
