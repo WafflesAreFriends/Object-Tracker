@@ -157,6 +157,9 @@ class Sticker(DetectedObject):
     def __init__(self, img, mask):
         super().__init__(img, mask) 
 
+    def set_type(self, type):
+        self.type = type
+
     # Checks if sticker overlaps inputted mask
     def check_mask_overlap(self, obj_mask):
         mask_intersect = np.bitwise_and(self.mask, obj_mask)
@@ -168,7 +171,70 @@ class Sticker(DetectedObject):
     
 
 class Rack(DetectedObject):
-    pass
+    def __init__(self, img, mask):
+        super().__init__(img, mask) 
+
+    def find_tube_dist_x(self, img, sticker):
+        sticker_x = sticker.centroid[0]
+        sticker_y = sticker.centroid[1]
+
+        length, width = self.get_dimensions()
+
+        x_axes_color = (0, 0, 255)
+        thickness = 20
+        x_axes_point = self.centroid + self.axes[0] * (length / 2)
+        x_axes_point_2 = self.centroid - self.axes[0] * (length / 2)
+
+        # calculate distance and point on principal axis
+        x1, y1 = x_axes_point_2
+        x2, y2 = x_axes_point
+        x3, y3 = sticker.centroid
+        dx, dy = x2-x1, y2-y1
+        det = dx*dx + dy*dy
+        a = (dy*(y3-y1)+dx*(x3-x1))/det
+        final_point = x1+a*dx, y1+a*dy
+
+        dist = hypot(final_point[0] - sticker_x, final_point[1] - sticker_y)
+        #print("The distance (x) is: ", dist)
+
+        # distance
+        #cv2.line(img, tuple(final_point), tuple(sticker.centroid), (0, 255, 0), thickness, cv2.LINE_AA)
+
+        #principal axis
+        cv2.line(img, tuple(x_axes_point_2), tuple(x_axes_point), x_axes_color, thickness, cv2.LINE_AA)
+
+        return dist
+
+    def find_tube_dist_y(self, img, sticker):
+        sticker_x = sticker.centroid[0]
+        sticker_y = sticker.centroid[1]
+
+        length, width = self.get_dimensions()
+
+        y_axes_color = (255, 0, 0)
+        thickness = 20
+        y_axes_point = self.centroid + self.axes[1] * (width / 2)
+        y_axes_point_2 = self.centroid - self.axes[1] * (width / 2)   
+
+        # calculate distance and point on principal axis
+        x1, y1 = y_axes_point_2
+        x2, y2 = y_axes_point
+        x3, y3 = sticker.centroid
+        dx, dy = x2-x1, y2-y1
+        det = dx*dx + dy*dy
+        a = (dy*(y3-y1)+dx*(x3-x1))/det
+        final_point = x1+a*dx, y1+a*dy
+
+        dist = hypot(final_point[0] - sticker_x, final_point[1] - sticker_y)
+        #print("The distance (y) is: ", dist)
+
+        # distance
+        #cv2.line(img, tuple(final_point), tuple(sticker.centroid), (0, 255, 0), thickness, cv2.LINE_AA)
+
+        #principal axis
+        cv2.line(img, tuple(y_axes_point_2), tuple(y_axes_point), y_axes_color, thickness, cv2.LINE_AA)
+
+        return dist
 
 ##### General Functions #####
 
@@ -231,6 +297,7 @@ def confirm_sticker_on_obj(img_path, obj_mask_path, sticker_mask_path):
     #display_image(img)
     return on_mask
 
+
 # this function is a work in progress so it's a bit of a mess right now, but it will
 # eventually check the number of tubes in a rack
 def confirm_tubes_in_rack(correct_num_tubes, img_path, rack_mask_path, sticker_mask_paths):
@@ -238,59 +305,45 @@ def confirm_tubes_in_rack(correct_num_tubes, img_path, rack_mask_path, sticker_m
     rack_mask = get_mask_from_image(cv2.imread(rack_mask_path))
     rack = Rack(img, rack_mask)
 
-    sticker_mask_0 = get_mask_from_image(cv2.imread(sticker_mask_paths[1]))
-    sticker_0 = Sticker(img, sticker_mask_0)
+    tube_count = 0
+    dist_x = 0
+    dist_y = 0
 
-    sticker_x = sticker_0.centroid[0]
-    sticker_y = sticker_0.centroid[1]
-    # print(sticker_x)
-    # print(sticker_y)
-    # print(sticker_0.centroid)
+    for s in sticker_mask_paths:
+        sticker_mask = get_mask_from_image(cv2.imread(s))
+        sticker = Sticker(img, sticker_mask)
+        dist_x = rack.find_tube_dist_x(img, sticker)
+        dist_y = rack.find_tube_dist_y(img, sticker)
+        if (dist_x <= 490 and dist_y <= 1400):
+            tube_count += 1
+        
 
-    length, width = rack.get_dimensions()
-    # print(length)
-    # print(width)
+    if (tube_count == correct_num_tubes):
+        print("Correct number of tubes on rack!")
+    elif (tube_count > correct_num_tubes):
+        print("%d%s" % (tube_count - correct_num_tubes, " extra tubes on rack"))
+    else:
+        print("%s%d%s" % ("Missing ", correct_num_tubes - tube_count, " tubes from rack"))
 
-    x_axes_color = (0, 0, 255)
-    y_axes_color = (255, 0, 0)
-    thickness=20
-    x_axes_point = rack.centroid+rack.axes[0] * (length / 2)
-    x_axes_point_2 = rack.centroid-rack.axes[0] * (length / 2)
-    y_axes_point = rack.centroid+rack.axes[1] * (width / 2)
-    y_axes_point_2 = rack.centroid-rack.axes[1] * (width / 2)
-
-    # a = x_axes_point[1] - rack.centroid[1] 
-    # b = rack.centroid[0] - x_axes_point[0]  
-    # c = -1 * (a*(rack.centroid[0]) + b*(rack.centroid[1]))
-    # d = abs((a * sticker_x + b * sticker_y + c)) / (sqrt(a * a + b * b))    
-
-    # calculate distance and point on principal axis
-    x1, y1 = x_axes_point_2
-    x2, y2 = x_axes_point
-    x3, y3 = sticker_0.centroid
-    dx, dy = x2-x1, y2-y1
-    det = dx*dx + dy*dy
-    a = (dy*(y3-y1)+dx*(x3-x1))/det
-    final_point = x1+a*dx, y1+a*dy
-
-    dist = hypot(final_point[0] - sticker_x, final_point[1] - sticker_y)
-    print("The distance is: ", dist)
-
-    # distance
-    cv2.line(img, tuple(final_point), tuple(sticker_0.centroid), (0, 255, 0), thickness, cv2.LINE_AA)
-
-    #principal axes
-    cv2.line(img, tuple(x_axes_point_2), tuple(x_axes_point), x_axes_color, thickness, cv2.LINE_AA)
-    cv2.line(img, tuple(y_axes_point_2), tuple(y_axes_point), y_axes_color, thickness, cv2.LINE_AA)
-    
     #rack.draw_axes()  
     display_image(img)
 
+
+
 # MAIN 
 if __name__=="__main__":
-    #identify_object("Sticker/Image.jpg", "Sticker/Pipette_Mask.png")
+    identify_object("Sticker/Image.jpg", "Sticker/Pipette_Mask.png")
     #identify_object("PCR_Plate/Image.jpg", "PCR_Plate/Image_Mask.png")
-    confirm_sticker_on_obj("Sticker/Image.jpg", "Sticker/Pipette_Mask.png", "Sticker/Sticker_Mask.png")
-    confirm_sticker_on_obj("Sticker/Image.jpg", "Sticker/Pipette_Mask.png", "Sticker/Incorrect_Sticker_Mask.png")
-    #sticker_mask_paths = ["Sticker/Rack/H2O_Mask_1.png", "Sticker/Rack/N1_Mask_1.png", "Sticker/Rack/N2_Mask_1.png", "Sticker/Rack/PC_Mask_1.png", "Sticker/Rack/PN_Mask_1.png", "Sticker/Rack/RP_Mask_1.png", "Sticker/Rack/S_Mask_1.png"]
-    #confirm_tubes_in_rack(5, "Sticker/Rack/Rack_Image_1.jpg", "Sticker/Rack/Rack_Mask_1.png", sticker_mask_paths)
+    #confirm_sticker_on_obj("Sticker/Image.jpg", "Sticker/Pipette_Mask.png", "Sticker/Sticker_Mask.png")
+    #confirm_sticker_on_obj("Sticker/Image.jpg", "Sticker/Pipette_Mask.png", "Sticker/Incorrect_Sticker_Mask.png")
+    sticker_mask_paths_1 = ["Rack/1/Sticker_Mask_1.png", "Rack/1/Sticker_Mask_2.png", "Rack/1/Sticker_Mask_3.png", "Rack/1/Sticker_Mask_4.png", "Rack/1/Sticker_Mask_5.png", "Rack/1/Sticker_Mask_6.png", "Rack/1/Sticker_Mask_7.png"]
+    #confirm_tubes_in_rack(7, "Rack/1/Rack_Image.jpg", "Rack/1/Rack_Mask.png", sticker_mask_paths_1)
+    
+    sticker_mask_paths_2 = ["Rack/2/Sticker_Mask_1.png", "Rack/2/Sticker_Mask_2.png", "Rack/2/Sticker_Mask_3.png", "Rack/2/Sticker_Mask_4.png", "Rack/2/Sticker_Mask_5.png", "Rack/2/Sticker_Mask_6.png", "Rack/2/Sticker_Mask_7.png"]
+    #confirm_tubes_in_rack(7, "Rack/2/Rack_Image.jpg", "Rack/2/Rack_Mask.png", sticker_mask_paths_2)
+    
+    sticker_mask_paths_3 = ["Rack/3/Sticker_Mask_1.png", "Rack/3/Sticker_Mask_2.png", "Rack/3/Sticker_Mask_3.png", "Rack/3/Sticker_Mask_4.png", "Rack/3/Sticker_Mask_5.png", "Rack/3/Sticker_Mask_6.png", "Rack/3/Sticker_Mask_7.png"]
+    #confirm_tubes_in_rack(7, "Rack/3/Rack_Image.jpg", "Rack/3/Rack_Mask.png", sticker_mask_paths_3)
+
+    sticker_mask_paths_4 = ["Rack/4/Sticker_Mask_1.png", "Rack/4/Sticker_Mask_2.png", "Rack/4/Sticker_Mask_3.png", "Rack/4/Sticker_Mask_4.png", "Rack/4/Sticker_Mask_5.png", "Rack/4/Sticker_Mask_6.png", "Rack/4/Sticker_Mask_7.png"]
+    #confirm_tubes_in_rack(7, "Rack/4/Rack_Image.jpg", "Rack/4/Rack_Mask.png", sticker_mask_paths_4)
